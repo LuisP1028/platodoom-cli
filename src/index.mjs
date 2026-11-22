@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const PLATODOOM_VERSION = "1.0.0";
+export const PLATODOOM_VERSION = "1.0.1";
 
 export const HARDWARE_TIER_SPECS = {
   G4: { accelerator_type: "GPU", memory_type: "VRAM", nominal_vram_gb: 96, vram_gb: 95.0, max_num_seqs: 256 },

@@ -208,7 +208,7 @@ const effectiveRuntimeRoot =
   verifiedPkgDigest && verifiedRuntimeDigest === verifiedPkgDigest ? runtimeDir : pkgRoot;
 
 if (argv.length === 1 && (argv[0] === "-v" || argv[0] === "--version")) {
-  console.log("platodoom v1.0.0");
+  console.log("platodoom v1.0.1");
   process.exit(0);
 }
 

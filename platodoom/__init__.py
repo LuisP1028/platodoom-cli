@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 _LAZY_EXPORT_MAP = {
     # Session & Subagent Engine

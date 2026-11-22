@@ -8,6 +8,7 @@ visual_taste_direction_859_v1, LANGUAGE.md, RULE[user_global]
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 from pathlib import Path
@@ -47,6 +48,105 @@ def _get_catalog(config: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str,
 
 ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 ANSI_TRUECOLOR_CELL_RE = re.compile(r"(?:\033\[38;2;(\d+);(\d+);(\d+)m)?(.)(?:\033\[0m)?")
+ANSI_TRUECOLOR_SGR_RE = re.compile(
+    r"\033\[((?:[0-9]+;)*)(38|48);2;(\d+);(\d+);(\d+)((?:;[0-9]+)*)m"
+)
+
+_XTERM256_CUBE_LEVELS: Tuple[int, ...] = (0, 95, 135, 175, 215, 255)
+_XTERM256_PALETTE: Tuple[Tuple[int, int, int, int], ...] = tuple(
+    [
+        (16 + 36 * ri + 6 * gi + bi, r, g, b)
+        for ri, r in enumerate(_XTERM256_CUBE_LEVELS)
+        for gi, g in enumerate(_XTERM256_CUBE_LEVELS)
+        for bi, b in enumerate(_XTERM256_CUBE_LEVELS)
+    ]
+    + [(232 + k, 8 + 10 * k, 8 + 10 * k, 8 + 10 * k) for k in range(24)]
+)
+
+_TRUECOLOR_TERM_PROGRAMS = frozenset(
+    {
+        "iterm.app",
+        "warpterminal",
+        "ghostty",
+        "wezterm",
+        "vscode",
+        "alacritty",
+        "hyper",
+        "rio",
+        "kitty",
+        "tabby",
+        "contour",
+        "mintty",
+    }
+)
+_TRUECOLOR_TERM_SUBSTRINGS = (
+    "truecolor",
+    "24bit",
+    "direct",
+    "kitty",
+    "ghostty",
+    "alacritty",
+    "wezterm",
+)
+
+
+@functools.lru_cache(maxsize=256)
+def _rgb_to_ansi256(r: int, g: int, b: int) -> int:
+    """Maps an 8-bit RGB triple to the nearest xterm-256 index in 16..255."""
+    best_idx = 124
+    best_dist = 1 << 30
+    for idx, pr, pg, pb in _XTERM256_PALETTE:
+        dr = r - pr
+        dg = g - pg
+        db = b - pb
+        dist = dr * dr + dg * dg + db * db
+        if dist < best_dist:
+            best_dist = dist
+            best_idx = idx
+            if dist == 0:
+                break
+    return best_idx
+
+
+def _downgrade_truecolor_sgr(text: str) -> str:
+    """Converts 24-bit SGR (38;2;R;G;B / 48;2;R;G;B) sequences to 256-color (38;5;N / 48;5;N)."""
+    if ";2;" not in text:
+        return text
+
+    def _repl(match: re.Match[str]) -> str:
+        prefix, mode, rs, gs, bs, suffix = match.groups()
+        idx = _rgb_to_ansi256(int(rs), int(gs), int(bs))
+        return f"\033[{prefix}{mode};5;{idx}{suffix}m"
+
+    return ANSI_TRUECOLOR_SGR_RE.sub(_repl, text)
+
+
+def supports_truecolor() -> bool:
+    """
+    Detects whether the active terminal safely supports 24-bit Truecolor SGR (`38;2;R;G;B`).
+    macOS `Terminal.app` (`TERM_PROGRAM=Apple_Terminal`) NEVER supports 24-bit SGR and
+    misinterprets parameters like `42` as green background, so it always returns False
+    even if `COLORTERM=truecolor` was inherited in the environment.
+    """
+    term = os.environ.get("TERM", "").strip().lower()
+    if term == "dumb":
+        return False
+    term_program = os.environ.get("TERM_PROGRAM", "").strip().lower()
+    if term_program == "apple_terminal":
+        return False
+    colorterm = os.environ.get("COLORTERM", "").strip().lower()
+    if colorterm in ("truecolor", "24bit"):
+        return True
+    if term_program in _TRUECOLOR_TERM_PROGRAMS:
+        return True
+    if os.environ.get("WT_SESSION") or os.environ.get("KONSOLE_VERSION"):
+        return True
+    vte_ver = os.environ.get("VTE_VERSION", "").strip()
+    if vte_ver.isdigit() and int(vte_ver) >= 3600:
+        return True
+    if any(token in term for token in _TRUECOLOR_TERM_SUBSTRINGS):
+        return True
+    return False
 
 BUNDLED_ASCII_BANNER_PATH = Path(__file__).resolve().parent / "assets" / "platodoom_utf8_blocks_truecolor.ansi"
 DESKTOP_ASCII_BANNER_PATH = BUNDLED_ASCII_BANNER_PATH
@@ -179,6 +279,7 @@ def _load_truecolor_banner_data() -> Dict[str, Any]:
     _BANNER_CACHE = {
         "source_path": str(src_path),
         "raw_lines": normalized_raw_lines,
+        "raw_lines_256": [_downgrade_truecolor_sgr(line) for line in normalized_raw_lines],
         "plain_lines": plain_lines,
         "grid": grid,
         "height": src_h,
@@ -191,10 +292,13 @@ def render_startup_ascii_banner(
     cols: Optional[int] = None,
     rows: Optional[int] = None,
     use_color: Optional[bool] = None,
+    use_truecolor: Optional[bool] = None,
 ) -> str:
     """
-    Renders the compact top-left 7x42 platodoom truecolor UTF-8 block logo with
-    'Welcome!' directly beneath it, fitting even narrow terminals without distortion.
+    Renders the compact top-left 7x42 platodoom UTF-8 block logo with
+    'Welcome!' directly beneath it, automatically downgrading 24-bit Truecolor
+    SGR to 256-color SGR on terminals that do not support 24-bit color (such as
+    macOS Terminal.app).
     """
     eff_cols, _eff_rows = get_raw_terminal_size()
     if cols is not None:
@@ -207,6 +311,7 @@ def render_startup_ascii_banner(
     else:
         eff_color = True
 
+    eff_truecolor = bool(use_truecolor) if use_truecolor is not None else supports_truecolor()
     eff_unicode = supports_unicode()
 
     def _map_glyph(ch: str) -> str:
@@ -219,15 +324,21 @@ def render_startup_ascii_banner(
     grid: List[List[Tuple[str, Optional[Tuple[int, int, int]]]]] = data["grid"]
 
     welcome_plain = "Welcome!"[:eff_cols]
+    welcome_sgr = (
+        "\033[1;38;2;168;42;38m"
+        if eff_truecolor
+        else f"\033[1;38;5;{_rgb_to_ansi256(168, 42, 38)}m"
+    )
     welcome_line = (
-        f"\033[1;38;2;168;42;38m{welcome_plain}\033[0m"
+        f"{welcome_sgr}{welcome_plain}\033[0m"
         if (eff_color and welcome_plain)
         else welcome_plain
     )
 
     if eff_cols >= src_w and eff_unicode:
         if eff_color:
-            return "\n".join([*data["raw_lines"], welcome_line])
+            banner_lines = data["raw_lines"] if eff_truecolor else data["raw_lines_256"]
+            return "\n".join([*banner_lines, welcome_line])
         return "\n".join([*data["plain_lines"], welcome_plain])
 
     rendered_rows: List[str] = []
@@ -249,7 +360,10 @@ def render_startup_ascii_banner(
                     parts.append(ch)
                 else:
                     has_sgr = True
-                    parts.append(f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m{ch}\033[0m")
+                    if eff_truecolor:
+                        parts.append(f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m{ch}\033[0m")
+                    else:
+                        parts.append(f"\033[38;5;{_rgb_to_ansi256(rgb[0], rgb[1], rgb[2])}m{ch}\033[0m")
             line_str = "".join(parts)
             if has_sgr and not line_str.endswith("\033[0m"):
                 line_str += "\033[0m"
@@ -360,7 +474,10 @@ GLYPH_PROG_EMPTY = "░" if USE_UNICODE else "-"
 def _c(ansi_code: str, text: str) -> str:
     if os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
         return text
-    return f"{ansi_code}{text}\033[0m" if (USE_COLOR or supports_color()) else text
+    if not (USE_COLOR or supports_color()):
+        return text
+    eff_code = ansi_code if supports_truecolor() else _downgrade_truecolor_sgr(ansi_code)
+    return f"{eff_code}{text}\033[0m"
 
 
 # Semantic Color Formatting Functions (Logo Crimson / Oxblood / Warm Rose Palette)
@@ -1081,7 +1198,7 @@ def render_compact_top_left_welcome(session: Any) -> str:
     )
     return "\n".join(
         [
-            f"{b_cyan('platodoom v1.0.0')} {dim(f'· {model} ({gpu})')}",
+            f"{b_cyan('platodoom v1.0.1')} {dim(f'· {model} ({gpu})')}",
             dim(ws_display),
             "",
             f"{bar} {mode_label} {bold('is the active agent mode')}",

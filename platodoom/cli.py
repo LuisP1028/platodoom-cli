@@ -20,7 +20,7 @@ import sys
 import tempfile
 from typing import Any, Dict, List, Optional
 
-PLATODOOM_VERSION = "1.0.0"
+PLATODOOM_VERSION = "1.0.1"
 
 
 def fast_non_hanging_exit(exit_code: int = 0) -> None:

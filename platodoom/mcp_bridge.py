@@ -243,7 +243,7 @@ def _execute_stdio_jsonrpc(
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "platodoom", "version": "1.0.0"},
+            "clientInfo": {"name": "platodoom", "version": "1.0.1"},
         },
     }
     initialized_notif = {
