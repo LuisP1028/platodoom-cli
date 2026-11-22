@@ -1,0 +1,51 @@
+{
+  "name": "platodoom",
+  "version": "1.0.0",
+  "description": "Standalone open-source Colab GPU AI coding, reasoning & multi-model CLI",
+  "license": "MIT",
+  "author": "LuisP1028",
+  "type": "module",
+  "bin": {
+    "platodoom": "./bin/platodoom.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "platodoom/",
+    "curation/",
+    "scripts/",
+    "notebooks/serve_sandcastle_vllm.ipynb",
+    "requirements.txt",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node ./scripts/postinstall.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ai",
+    "cli",
+    "coding-agent",
+    "google-colab",
+    "vllm",
+    "qwen",
+    "deepseek",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LuisP1028/platodoom-cli.git"
+  },
+  "homepage": "https://github.com/LuisP1028/platodoom-cli#readme",
+  "bugs": {
+    "url": "https://github.com/LuisP1028/platodoom-cli/issues"
+  },
+  "dependencies": {}
+}

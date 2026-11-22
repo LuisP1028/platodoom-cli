@@ -1,0 +1,5 @@
+selenium==4.41.0
+webdriver-manager==4.1.2
+PyYAML==6.0.1
+pydantic==2.14.1
+httpx==0.28.1
